@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { format, parseISO, isBefore, isEqual, startOfDay } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
+import { LeetCodeSync } from '../components/LeetCodeSync';
 import { useAuth } from '../contexts/AuthContext';
 
 export const Dashboard = () => {
@@ -168,6 +169,9 @@ export const Dashboard = () => {
 
       {/* Activity Heatmap & Streak Component */}
       <ActivityHeatmap />
+
+      {/* LeetCode Sync */}
+      <LeetCodeSync onSynced={fetchDueProblems} />
 
       {/* Revision List */}
       <div>
