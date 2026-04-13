@@ -3,8 +3,11 @@ import { CheckCircle2, TrendingUp, Calendar, AlertCircle, ExternalLink, Loader2 
 import { supabase } from '../lib/supabase';
 import { format, parseISO, isBefore, isEqual, startOfDay } from 'date-fns';
 import { toast } from 'react-hot-toast';
+import { ActivityHeatmap } from '../components/ActivityHeatmap';
+import { useAuth } from '../contexts/AuthContext';
 
 export const Dashboard = () => {
+  const { user } = useAuth();
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reviewingId, setReviewingId] = useState(null);
@@ -62,6 +65,13 @@ export const Dashboard = () => {
 
       if (error) throw error;
 
+      // Silently add a review log for our heatmap schema (ignores if table missing)
+      await supabase.from('review_logs').insert([{
+        user_id: user.id,
+        problem_id: problem.id,
+        date_string: todayStr
+      }]);
+
       toast.success(`Marked "${problem.title}" as reviewed!`);
       // Remove it locally
       setProblems(prev => prev.filter(p => p.id !== problem.id));
@@ -112,6 +122,9 @@ export const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Activity Heatmap & Streak Component */}
+      <ActivityHeatmap />
 
       {/* Revision List */}
       <div>

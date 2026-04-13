@@ -1,27 +1,69 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  format, 
-  addMonths, 
-  subMonths, 
-  startOfMonth, 
-  endOfMonth, 
-  startOfWeek, 
-  endOfWeek, 
-  eachDayOfInterval, 
-  isSameMonth, 
+import {
+  format,
+  addMonths,
+  subMonths,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  isSameMonth,
   isSameDay,
   isToday,
   parseISO
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, BookOpen, ExternalLink } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BookOpen, ExternalLink, CheckCircle2, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 
 export const CalendarView = () => {
+  const { user } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [reviewingId, setReviewingId] = useState(null);
+
+  const handleMarkReviewed = async (problem) => {
+    setReviewingId(problem.id);
+    try {
+      // Log it using the selected calendar date to back/forward fill their heatmap accuracy
+      const logStr = format(selectedDate, 'yyyy-MM-dd');
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const newIndex = problem.current_interval_index + 1;
+
+      const { error } = await supabase
+        .from('problems')
+        .update({
+          current_interval_index: newIndex,
+          last_reviewed_date: todayStr // the logic technically happened 'today'
+        })
+        .eq('id', problem.id);
+
+      if (error) throw error;
+
+      const { error: logError } = await supabase.from('review_logs').insert([{
+        user_id: user.id,
+        problem_id: problem.id,
+        date_string: logStr // log the heatmap square to the selected calendar day!
+      }]);
+
+      if (logError) {
+        console.error('Heatmap Insert Error:', logError);
+        throw new Error(`Heatmap Log Error: ${logError.message}`);
+      }
+
+      toast.success(`Completed "${problem.title}"!`);
+      // Update local array dynamically to keep calendar synced
+      setProblems(prev => prev.map(p => p.id === problem.id ? { ...p, current_interval_index: newIndex } : p));
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setReviewingId(null);
+    }
+  };
 
   useEffect(() => {
     const fetchAllProblems = async () => {
@@ -41,10 +83,10 @@ export const CalendarView = () => {
   // Map out all future schedules
   const scheduleMap = useMemo(() => {
     const map = new Map(); // 'yyyy-MM-dd' -> Problem[]
-    
+
     problems.forEach(problem => {
       if (!problem.review_schedule) return;
-      
+
       // We can map all future scheduled dates that the user has not completed yet
       for (let i = problem.current_interval_index; i < problem.review_schedule.length; i++) {
         const dateStr = problem.review_schedule[i];
@@ -58,7 +100,7 @@ export const CalendarView = () => {
         });
       }
     });
-    
+
     return map;
   }, [problems]);
 
@@ -95,7 +137,7 @@ export const CalendarView = () => {
               <button onClick={prevMonth} className="p-2 rounded-xl hover:bg-slate-100 transition-colors text-slate-600">
                 <ChevronLeft size={20} />
               </button>
-              <button 
+              <button
                 onClick={() => setCurrentDate(new Date())}
                 className="px-3 py-1.5 text-sm font-medium rounded-lg text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
               >
@@ -122,7 +164,7 @@ export const CalendarView = () => {
               const isTodayDate = isToday(day);
 
               return (
-                <div 
+                <div
                   key={day.toString() + idx}
                   onClick={() => setSelectedDate(day)}
                   className={`bg-white min-h-[100px] p-2 cursor-pointer transition-colors relative group
@@ -137,14 +179,14 @@ export const CalendarView = () => {
                     `}>
                       {format(day, 'd')}
                     </span>
-                    
+
                     {dailyTasks.length > 0 && (
                       <span className="text-xs font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-md">
                         {dailyTasks.length}
                       </span>
                     )}
                   </div>
-                  
+
                   <div className="mt-2 space-y-1">
                     {dailyTasks.slice(0, 3).map((task, i) => (
                       <div key={i} className="text-xs truncate px-1.5 py-1 bg-slate-100 text-slate-600 rounded">
@@ -168,7 +210,7 @@ export const CalendarView = () => {
           <h3 className="font-bold text-lg text-slate-800 mb-2">
             {isToday(selectedDate) ? "Today's Schedule" : format(selectedDate, 'EEEE, MMMM do')}
           </h3>
-          
+
           <div className="flex-1 mt-4">
             {selectedProblems.length === 0 ? (
               <div className="text-center py-12 flex flex-col items-center">
@@ -183,26 +225,52 @@ export const CalendarView = () => {
             ) : (
               <div className="space-y-3">
                 {selectedProblems.map((problem, i) => (
-                  <div key={i} className="p-3 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors group">
-                    <div className="flex justify-between items-start">
-                      <p className="font-semibold text-sm text-slate-800 group-hover:text-blue-600 transition-colors">
-                        {problem.title}
-                      </p>
-                      {problem.url && (
-                        <a href={problem.url} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-500">
-                          <ExternalLink size={14} />
-                        </a>
+                  <div key={i} className="p-3 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors group flex items-start gap-3">
+
+                    {/* Interactive Checkbox */}
+                    <button
+                      onClick={() => handleMarkReviewed(problem)}
+                      disabled={reviewingId === problem.id || !problem.isNextReview}
+                      title={!problem.isNextReview ? "You must complete previous reviews first" : "Mark as completed"}
+                      className={`mt-1 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-colors
+                        ${problem.isNextReview
+                          ? 'border-slate-300 hover:border-emerald-500 hover:text-emerald-500 text-transparent bg-white shadow-sm'
+                          : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}
+                      `}
+                    >
+                      {reviewingId === problem.id ? (
+                        <Loader2 className="animate-spin text-emerald-500" size={12} />
+                      ) : (
+                        <CheckCircle2 size={14} className="fill-current text-white stroke-[3px]" />
                       )}
-                    </div>
-                    <div className="flex items-center space-x-2 mt-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                        {problem.difficulty}
-                      </span>
-                      {problem.isNextReview && (
-                        <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded">
-                          Next Up
+                    </button>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start mb-1">
+                        <p className={`font-semibold text-sm transition-colors ${problem.isNextReview ? 'text-slate-800 group-hover:text-blue-600' : 'text-slate-500'}`}>
+                          {problem.title}
+                        </p>
+                        {problem.url && (
+                          <a href={problem.url} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-500 ml-2 shrink-0">
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                          {problem.difficulty}
                         </span>
-                      )}
+                        {problem.isNextReview ? (
+                          <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded">
+                            Next Up
+                          </span>
+                        ) : (
+                          <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                            Locked
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
