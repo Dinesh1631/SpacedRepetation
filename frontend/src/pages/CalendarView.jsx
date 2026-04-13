@@ -25,6 +25,7 @@ export const CalendarView = () => {
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reviewingId, setReviewingId] = useState(null);
+  const [activeTab, setActiveTab] = useState('pending');
 
   const handleMarkReviewed = async (problem) => {
     setReviewingId(problem.id);
@@ -65,6 +66,41 @@ export const CalendarView = () => {
     }
   };
 
+  const handleUndoReview = async (problem) => {
+    setReviewingId(problem.id);
+    try {
+      const logStr = format(selectedDate, 'yyyy-MM-dd');
+      const newIndex = Math.max(0, problem.current_interval_index - 1);
+
+      const { error } = await supabase
+        .from('problems')
+        .update({
+          current_interval_index: newIndex,
+          last_reviewed_date: null
+        })
+        .eq('id', problem.id);
+
+      if (error) throw error;
+
+      // Retroactively scrub the dashboard heatmap database match
+      const { error: logError } = await supabase.from('review_logs')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('problem_id', problem.id)
+        .eq('date_string', logStr);
+
+      if (logError) throw logError;
+
+      toast.success(`Unchecked "${problem.title}"`);
+      // Update instantly on client without refetch
+      setProblems(prev => prev.map(p => p.id === problem.id ? { ...p, current_interval_index: newIndex, last_reviewed_date: null } : p));
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
   useEffect(() => {
     const fetchAllProblems = async () => {
       try {
@@ -87,15 +123,28 @@ export const CalendarView = () => {
     problems.forEach(problem => {
       if (!problem.review_schedule) return;
 
+      // Map past completed dates! If it's already finished, we render it so it can be un-checked if desired
+      for (let i = 0; i < problem.current_interval_index; i++) {
+        const dateStr = problem.review_schedule[i];
+        if (!map.has(dateStr)) {
+          map.set(dateStr, []);
+        }
+        map.get(dateStr).push({
+          ...problem,
+          isCompleted: true,
+          completedInterval: i
+        });
+      }
+
       // We can map all future scheduled dates that the user has not completed yet
       for (let i = problem.current_interval_index; i < problem.review_schedule.length; i++) {
         const dateStr = problem.review_schedule[i];
         if (!map.has(dateStr)) {
           map.set(dateStr, []);
         }
-        // Only push if compiling for the exact mapped visual date
         map.get(dateStr).push({
           ...problem,
+          isCompleted: false,
           isNextReview: i === problem.current_interval_index // flag to highlight if it's the immediate next one
         });
       }
@@ -118,6 +167,9 @@ export const CalendarView = () => {
   // Determine tasks for the selected date
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
   const selectedProblems = scheduleMap.get(selectedDateStr) || [];
+  const pendingProblems = selectedProblems.filter(p => !p.isCompleted);
+  const doneProblemsList = selectedProblems.filter(p => p.isCompleted);
+  const visibleProblems = activeTab === 'pending' ? pendingProblems : doneProblemsList;
 
   return (
     <div className="space-y-6">
@@ -211,6 +263,32 @@ export const CalendarView = () => {
             {isToday(selectedDate) ? "Today's Schedule" : format(selectedDate, 'EEEE, MMMM do')}
           </h3>
 
+          {/* Tabs */}
+          {selectedProblems.length > 0 && (
+            <div className="flex mt-3 bg-slate-100 rounded-xl p-1 gap-1">
+              <button
+                onClick={() => setActiveTab('pending')}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-colors ${
+                  activeTab === 'pending'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Pending {pendingProblems.length > 0 && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{pendingProblems.length}</span>}
+              </button>
+              <button
+                onClick={() => setActiveTab('done')}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-colors ${
+                  activeTab === 'done'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Done {doneProblemsList.length > 0 && <span className="ml-1 text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">{doneProblemsList.length}</span>}
+              </button>
+            </div>
+          )}
+
           <div className="flex-1 mt-4">
             {selectedProblems.length === 0 ? (
               <div className="text-center py-12 flex flex-col items-center">
@@ -222,24 +300,30 @@ export const CalendarView = () => {
                   Take a break or add new problems to keep learning.
                 </p>
               </div>
+            ) : visibleProblems.length === 0 ? (
+              <div className="text-center py-8 flex flex-col items-center">
+                <p className="text-slate-400 text-sm font-medium">
+                  {activeTab === 'pending' ? 'All done for this date!' : 'No completed problems yet.'}
+                </p>
+              </div>
             ) : (
               <div className="space-y-3">
-                {selectedProblems.map((problem, i) => (
+                {visibleProblems.map((problem, i) => (
                   <div key={i} className="p-3 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors group flex items-start gap-3">
 
                     {/* Interactive Checkbox */}
                     <button
-                      onClick={() => handleMarkReviewed(problem)}
-                      disabled={reviewingId === problem.id || !problem.isNextReview}
-                      title={!problem.isNextReview ? "You must complete previous reviews first" : "Mark as completed"}
+                      onClick={() => problem.isCompleted ? handleUndoReview(problem) : handleMarkReviewed(problem)}
+                      disabled={reviewingId === problem.id || (!problem.isNextReview && !problem.isCompleted)}
+                      title={problem.isCompleted ? "Uncheck to logically undo" : !problem.isNextReview ? "You must complete previous reviews first" : "Mark as completed"}
                       className={`mt-1 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-colors
-                        ${problem.isNextReview
-                          ? 'border-slate-300 hover:border-emerald-500 hover:text-emerald-500 text-transparent bg-white shadow-sm'
-                          : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}
+                        ${problem.isCompleted ? 'bg-emerald-500 border-emerald-500 hover:bg-red-500 hover:border-red-500 text-white shadow-sm' :
+                          problem.isNextReview ? 'border-slate-300 hover:border-emerald-500 hover:text-emerald-500 text-transparent bg-white shadow-sm' : 
+                          'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}
                       `}
                     >
                       {reviewingId === problem.id ? (
-                        <Loader2 className="animate-spin text-emerald-500" size={12} />
+                        <Loader2 className={`animate-spin ${problem.isCompleted ? 'text-white' : 'text-emerald-500'}`} size={12} />
                       ) : (
                         <CheckCircle2 size={14} className="fill-current text-white stroke-[3px]" />
                       )}
@@ -261,7 +345,11 @@ export const CalendarView = () => {
                         <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                           {problem.difficulty}
                         </span>
-                        {problem.isNextReview ? (
+                        {problem.isCompleted ? (
+                          <span className="text-[10px] uppercase font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                            Done
+                          </span>
+                        ) : problem.isNextReview ? (
                           <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded">
                             Next Up
                           </span>

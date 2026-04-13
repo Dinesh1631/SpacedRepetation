@@ -12,6 +12,8 @@ export const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [reviewingId, setReviewingId] = useState(null);
 
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+
   const fetchDueProblems = async () => {
     try {
       // Fetch all unfinished problems for the user
@@ -30,6 +32,9 @@ export const Dashboard = () => {
       const today = startOfDay(new Date());
       
       const due = data.filter(problem => {
+        // Did we complete it TODAY? Keep it on the dashboard so we can undo it
+        if (problem.last_reviewed_date === todayStr) return true;
+
         if (problem.current_interval_index >= problem.review_schedule.length) return false;
         
         const nextReviewDate = startOfDay(parseISO(problem.review_schedule[problem.current_interval_index]));
@@ -73,8 +78,43 @@ export const Dashboard = () => {
       }]);
 
       toast.success(`Marked "${problem.title}" as reviewed!`);
-      // Remove it locally
-      setProblems(prev => prev.filter(p => p.id !== problem.id));
+      // Update locally to keep it in the "Completed" section instead of vanishing
+      setProblems(prev => prev.map(p => p.id === problem.id ? { ...p, current_interval_index: newIndex, last_reviewed_date: todayStr } : p));
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const handleUndoReview = async (problem) => {
+    setReviewingId(problem.id);
+    try {
+      const newIndex = Math.max(0, problem.current_interval_index - 1);
+      
+      const { error } = await supabase
+        .from('problems')
+        .update({
+          current_interval_index: newIndex,
+          last_reviewed_date: null
+        })
+        .eq('id', problem.id);
+
+      if (error) throw error;
+
+      // Retroactively scrub the database's log so the heatmap visually decreases immediately
+      const { error: logError } = await supabase
+        .from('review_logs')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('problem_id', problem.id)
+        .eq('date_string', todayStr);
+      
+      if (logError) throw logError;
+
+      toast.success(`Unchecked "${problem.title}"`);
+      // Slide it back mathematically without refreshing DB
+      setProblems(prev => prev.map(p => p.id === problem.id ? { ...p, current_interval_index: newIndex, last_reviewed_date: null } : p));
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -90,6 +130,9 @@ export const Dashboard = () => {
       default: return 'text-slate-600 bg-slate-50';
     }
   };
+
+  const dueList = problems.filter(p => p.last_reviewed_date !== todayStr);
+  const completedList = problems.filter(p => p.last_reviewed_date === todayStr);
 
   return (
     <div className="space-y-6">
@@ -139,7 +182,7 @@ export const Dashboard = () => {
               <p className="text-slate-500 text-sm font-medium">Checking your schedule...</p>
             </div>
           </div>
-        ) : problems.length === 0 ? (
+        ) : dueList.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-2xl border border-slate-100 shadow-sm">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-emerald-50 mb-5 relative">
               <CheckCircle2 className="text-emerald-500 relative z-10" size={40} />
@@ -147,12 +190,12 @@ export const Dashboard = () => {
             </div>
             <h3 className="text-2xl font-bold text-slate-900 mb-2">You're all caught up!</h3>
             <p className="text-slate-500 max-w-sm mx-auto">
-              There are no DSA problems scheduled for review today. Take a break or add some new problems to learn.
+              There are no DSA problems scheduled for review today. Take a break!
             </p>
           </div>
         ) : (
           <div className="space-y-4">
-            {problems.map(problem => (
+            {dueList.map(problem => (
               <div key={problem.id} className="bg-white p-5 md:p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow group flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
@@ -200,6 +243,51 @@ export const Dashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Completed Today List */}
+      {completedList.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center">
+            <CheckCircle2 className="mr-2 text-emerald-500" size={20} /> Completed Today
+          </h2>
+          <div className="space-y-4 opacity-75 hover:opacity-100 transition-opacity">
+            {completedList.map(problem => (
+              <div key={problem.id} className="bg-slate-50 p-5 md:p-6 rounded-2xl border border-emerald-100 shadow-sm transition-shadow group flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <h3 className="text-lg font-bold text-slate-500 line-through decoration-slate-300">{problem.title}</h3>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1 rounded-lg">
+                      Done
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      Completed at {format(new Date(), 'h:mm a')}
+                    </span>
+                  </div>
+                </div>
+                <div className="w-full md:w-auto shrink-0 mt-2 md:mt-0">
+                  <button
+                    onClick={() => handleUndoReview(problem)}
+                    disabled={reviewingId === problem.id}
+                    title="Undo completion"
+                    className="w-full flex items-center justify-center space-x-2 bg-white border border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 px-5 py-3 md:py-2.5 min-h-[44px] rounded-xl font-semibold transition-colors disabled:opacity-70 shadow-sm"
+                  >
+                    {reviewingId === problem.id ? (
+                      <Loader2 className="animate-spin" size={18} />
+                    ) : (
+                      <>
+                        <AlertCircle size={18} />
+                        <span>Undo Match</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
