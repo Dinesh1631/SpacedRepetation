@@ -1,62 +1,20 @@
-const LEETCODE_GRAPHQL = 'https://leetcode.com/graphql';
-const CORS_PROXIES = [
-  (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
-
-const GRAPHQL_QUERY = `query recentAcSubmissionList($username: String!, $limit: Int) {
-  recentAcSubmissionList(username: $username, limit: $limit) {
-    id
-    title
-    titleSlug
-    timestamp
-  }
-}`;
-
 /**
- * Fetch recent accepted submissions by calling LeetCode GraphQL directly
- * through CORS proxies. No third-party API dependency.
+ * Fetch recent accepted submissions via our own Vercel serverless proxy.
+ * This avoids all CORS issues since the call is server-to-server.
  */
 export const fetchRecentAC = async (username, limit = 20) => {
-  const body = JSON.stringify({
-    query: GRAPHQL_QUERY,
-    variables: { username, limit }
-  });
+  const res = await fetch(`/api/leetcode?username=${encodeURIComponent(username)}&limit=${limit}`);
 
-  const headers = { 'Content-Type': 'application/json' };
-
-  // Attempt 1: Direct call (works in some environments)
-  try {
-    const res = await fetch(LEETCODE_GRAPHQL, {
-      method: 'POST', headers, body
-    });
-    if (res.ok) {
-      const json = await res.json();
-      const list = json?.data?.recentAcSubmissionList;
-      if (list) return list;
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 404 || body.error?.includes('not found')) {
+      throw new Error(`LeetCode user "${username}" not found.`);
     }
-  } catch { /* CORS blocked — expected, try proxies */ }
-
-  // Attempt 2+: Try each CORS proxy
-  for (const makeUrl of CORS_PROXIES) {
-    try {
-      const proxyUrl = makeUrl(LEETCODE_GRAPHQL);
-      const res = await fetch(proxyUrl, {
-        method: 'POST', headers, body
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const list = json?.data?.recentAcSubmissionList;
-        if (list) return list;
-      }
-    } catch {
-      continue; // Try next proxy
-    }
+    throw new Error(body.error || `Sync failed (${res.status})`);
   }
 
-  throw new Error(
-    'Could not reach LeetCode. All connection methods failed. Please check your internet and try again.'
-  );
+  const data = await res.json();
+  return data.submission || [];
 };
 
 /**
