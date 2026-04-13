@@ -94,15 +94,15 @@ export const Dashboard = () => {
   return (
     <div className="space-y-6">
       {/* Header section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 mt-1">Ready to exercise your brain today?</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Dashboard</h1>
+          <p className="text-sm sm:text-base text-slate-500 mt-1">Ready to exercise your brain today?</p>
         </div>
         
-        <div className="flex space-x-3">
-          <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl shadow-sm flex items-center space-x-3">
-            <div className="bg-blue-100 text-blue-600 p-2 rounded-xl">
+        <div className="flex flex-col sm:flex-row gap-3 w-full">
+          <div className="flex-1 bg-white border border-slate-200 px-4 py-3 rounded-2xl shadow-sm flex items-center space-x-3">
+            <div className="bg-slate-50 text-slate-600 p-2 rounded-xl border border-slate-100">
               <Calendar size={20} />
             </div>
             <div>
@@ -111,8 +111,8 @@ export const Dashboard = () => {
             </div>
           </div>
           
-          <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl shadow-sm flex items-center space-x-3">
-            <div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl">
+          <div className="flex-1 bg-white border border-slate-200 px-4 py-3 rounded-2xl shadow-sm flex items-center space-x-3">
+            <div className="bg-slate-50 text-slate-600 p-2 rounded-xl border border-slate-100">
               <TrendingUp size={20} />
             </div>
             <div>
@@ -129,7 +129,7 @@ export const Dashboard = () => {
       {/* Revision List */}
       <div>
         <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center">
-          <AlertCircle className="mr-2 text-blue-600" size={20} /> Today's Revision List
+          <AlertCircle className="mr-2 text-slate-400" size={20} /> Today's Revision List
         </h2>
 
         {loading ? (
@@ -179,11 +179,11 @@ export const Dashboard = () => {
                   </div>
                 </div>
 
-                <div>
+                <div className="w-full md:w-auto shrink-0 space-y-2 mt-2 md:mt-0">
                   <button
                     onClick={() => handleMarkReviewed(problem)}
                     disabled={reviewingId === problem.id}
-                    className="w-full md:w-auto flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-70 transform hover:-translate-y-0.5 shadow-sm shadow-emerald-500/20"
+                    className="w-full flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 text-white px-5 py-3 md:py-2.5 min-h-[44px] rounded-xl font-semibold transition-colors disabled:opacity-70 shadow-sm"
                   >
                     {reviewingId === problem.id ? (
                       <Loader2 className="animate-spin" size={18} />

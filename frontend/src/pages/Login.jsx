@@ -40,18 +40,14 @@ export const Login = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 selection:bg-blue-100 selection:text-blue-900 p-4">
-      <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 relative overflow-hidden">
+      <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
         
-        {/* Decorative background blur */}
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-32 h-32 rounded-full bg-blue-500/10 blur-2xl pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-32 h-32 rounded-full bg-indigo-500/10 blur-2xl pointer-events-none"></div>
-
         <div>
           <div className="flex justify-center flex-col items-center">
-            <div className="w-12 h-12 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30 mb-4">
+            <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-white mb-4">
               <Sparkles size={24} />
             </div>
-            <h2 className="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
+            <h2 className="text-center text-3xl font-bold font-serif text-slate-800 tracking-tight">
               {isLogin ? 'Sign in to access' : 'Create an account'}
             </h2>
             <p className="mt-2 text-center text-sm text-slate-500">
@@ -96,7 +92,7 @@ export const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-xl text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-md shadow-blue-500/25 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-xl text-white bg-slate-800 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <Loader2 className="animate-spin" size={20} />

@@ -12,7 +12,8 @@ export const AddProblemModal = ({ isOpen, onClose, onProblemAdded }) => {
     title: '',
     url: '',
     difficulty: 'Medium',
-    tags: ''
+    tags: '',
+    notes: ''
   });
 
   if (!isOpen) return null;
@@ -48,6 +49,7 @@ export const AddProblemModal = ({ isOpen, onClose, onProblemAdded }) => {
           url: formData.url,
           difficulty: formData.difficulty,
           tags: tagsArray,
+          notes: formData.notes,
           review_schedule,
           current_interval_index: 0,
           created_at: new Date().toISOString()
@@ -58,7 +60,7 @@ export const AddProblemModal = ({ isOpen, onClose, onProblemAdded }) => {
 
       toast.success('Problem added successfully!');
       onProblemAdded(data[0]);
-      setFormData({ title: '', url: '', difficulty: 'Medium', tags: '' });
+      setFormData({ title: '', url: '', difficulty: 'Medium', tags: '', notes: '' });
       onClose();
     } catch (error) {
       toast.error(error.message);
@@ -68,8 +70,9 @@ export const AddProblemModal = ({ isOpen, onClose, onProblemAdded }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden p-6 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white rounded-2xl w-full sm:max-w-md shadow-2xl relative my-auto shrink-0">
+        <div className="p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-slate-900">Add New Problem</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -84,7 +87,7 @@ export const AddProblemModal = ({ isOpen, onClose, onProblemAdded }) => {
               type="text"
               required
               placeholder="e.g. Two Sum"
-              className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-4 py-3 min-h-[44px] border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
               value={formData.title}
               onChange={(e) => setFormData({...formData, title: e.target.value})}
             />
@@ -95,16 +98,27 @@ export const AddProblemModal = ({ isOpen, onClose, onProblemAdded }) => {
             <input
               type="url"
               placeholder="e.g. https://leetcode.com/problems/two-sum/"
-              className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-4 py-3 min-h-[44px] border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
               value={formData.url}
               onChange={(e) => setFormData({...formData, url: e.target.value})}
             />
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Personal Notes (optional)</label>
+            <textarea
+              rows="3"
+              placeholder="Write insights, time complexity findings, or tricks..."
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none resize-y min-h-[80px]"
+              value={formData.notes}
+              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+            />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Difficulty</label>
             <select
-              className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+              className="w-full px-4 py-3 min-h-[44px] border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
               value={formData.difficulty}
               onChange={(e) => setFormData({...formData, difficulty: e.target.value})}
             >
@@ -119,29 +133,30 @@ export const AddProblemModal = ({ isOpen, onClose, onProblemAdded }) => {
             <input
               type="text"
               placeholder="e.g. Array, Hash Table"
-              className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full px-4 py-3 min-h-[44px] border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
               value={formData.tags}
               onChange={(e) => setFormData({...formData, tags: e.target.value})}
             />
           </div>
 
-          <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end space-x-3">
+          <div className="mt-8 pt-4 border-t border-slate-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium transition-colors"
+              className="w-full sm:w-auto px-4 py-3 min-h-[44px] text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium transition-colors text-center"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-xl font-medium transition-colors disabled:opacity-70 flex items-center"
+              className="w-full sm:w-auto justify-center px-4 py-3 min-h-[44px] text-white bg-slate-800 hover:bg-slate-700 rounded-xl font-medium transition-colors disabled:opacity-70 flex items-center"
             >
-              {loading ? 'Adding...' : 'Add Problem'}
+              {loading ? 'Saving...' : 'Save Problem'}
             </button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );
