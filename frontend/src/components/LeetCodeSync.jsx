@@ -103,6 +103,9 @@ export const LeetCodeSync = ({ onSynced }) => {
         notes: '',
         review_schedule: generateSchedule('Medium'),
         current_interval_index: 0,
+        next_review_date: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+        interval: 1,
+        ease_factor: 2.5,
         created_at: new Date().toISOString()
       }));
 

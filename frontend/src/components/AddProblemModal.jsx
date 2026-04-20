@@ -52,6 +52,9 @@ export const AddProblemModal = ({ isOpen, onClose, onProblemAdded }) => {
           notes: formData.notes,
           review_schedule,
           current_interval_index: 0,
+          next_review_date: format(addDays(new Date(), intervals[0]), 'yyyy-MM-dd'),
+          interval: intervals[0],
+          ease_factor: 2.5,
           created_at: new Date().toISOString()
         }
       ]).select();
