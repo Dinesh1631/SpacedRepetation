@@ -17,8 +17,7 @@ import {
   startOfDay
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, BookOpen, ExternalLink, CheckCircle2, Loader2, GripVertical } from 'lucide-react';
-import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core';
-import { rectIntersection } from '@dnd-kit/core';
+import { DndContext, DragOverlay, useDraggable, useDroppable, useSensor, useSensors, PointerSensor, closestCenter } from '@dnd-kit/core';
 import { recalculateSpacedRepetition, rebalanceSchedule } from '../lib/schedulingUtils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -29,8 +28,11 @@ const DroppableDayCell = ({ day, dayStr, isSelected, isCurrentMonth, isTodayDate
     id: dayStr,
   });
 
-  const isOverloaded = dailyTasks.length > 10;
-  const isOptimal = dailyTasks.length > 0 && dailyTasks.length <= 10;
+  const pendingCount = dailyTasks.filter(t => !t.isCompleted).length;
+  const completedCount = dailyTasks.filter(t => t.isCompleted).length;
+  
+  const isOverloaded = pendingCount > 10;
+  const isOptimal = pendingCount > 0 && pendingCount <= 10;
 
   return (
     <div
@@ -51,11 +53,18 @@ const DroppableDayCell = ({ day, dayStr, isSelected, isCurrentMonth, isTodayDate
           {format(day, 'd')}
         </span>
 
-        {dailyTasks.length > 0 && (
-          <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${isOverloaded ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-            {dailyTasks.length}
-          </span>
-        )}
+        <div className="flex gap-1">
+          {completedCount > 0 && (
+            <span className="text-xs font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-600" title={`${completedCount} Done`}>
+              {completedCount} ✓
+            </span>
+          )}
+          {pendingCount > 0 && (
+            <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${isOverloaded ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`} title={`${pendingCount} Pending`}>
+              {pendingCount}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="mt-2 space-y-1">
@@ -76,21 +85,22 @@ const DroppableDayCell = ({ day, dayStr, isSelected, isCurrentMonth, isTodayDate
 
 const DraggableProblemCard = ({ problem, reviewingId, handleMarkReviewed, handleUndoReview }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: problem.id,
-    data: problem
+    id: String(problem.id),
+    data: { problem }
   });
 
-  const style = transform ? {
-    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+  const style = {
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     zIndex: isDragging ? 50 : 'auto',
-    opacity: isDragging ? 0.7 : 1,
-  } : undefined;
+    opacity: isDragging ? 0.4 : 1,
+    touchAction: 'none',
+  };
 
   return (
     <div ref={setNodeRef} style={style} className={`p-3 border rounded-xl transition-colors group flex items-start gap-3 ${isDragging ? 'shadow-lg border-blue-400 bg-blue-50' : 'border-slate-100 hover:bg-slate-50'}`}>
       
-      {/* Drag Handle */}
-      <div {...listeners} {...attributes} className="mt-1 -ml-1 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing">
+      {/* Drag Handle - the entire grip area triggers drag */}
+      <div {...listeners} {...attributes} className="mt-1 -ml-1 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing" style={{ touchAction: 'none' }}>
         <GripVertical size={16} />
       </div>
 
@@ -155,6 +165,7 @@ export const CalendarView = () => {
   const [loading, setLoading] = useState(true);
   const [reviewingId, setReviewingId] = useState(null);
   const [activeTab, setActiveTab] = useState('pending');
+  const [activeDragItem, setActiveDragItem] = useState(null);
 
   const handleMarkReviewed = async (problem) => {
     setReviewingId(problem.id);
@@ -285,12 +296,6 @@ export const CalendarView = () => {
 
       if (!targetDateStr) return;
 
-      // Sync Calendar with Dashboard: Roll forward uncompleted past-due items organically to "Today"
-      const targetObj = startOfDay(parseISO(targetDateStr));
-      if (isBefore(targetObj, todayObj) && problem.last_reviewed_date !== todayStrFmt) {
-        targetDateStr = todayStrFmt;
-      }
-
       // They haven't completed this task yet; it's scheduled for targetDateStr
       if (!map.has(targetDateStr)) {
         map.set(targetDateStr, []);
@@ -320,15 +325,25 @@ export const CalendarView = () => {
     return map;
   }, [problems]);
 
+  // Handle Drag Start
+  const handleDragStart = (event) => {
+    const { active } = event;
+    if (active?.data?.current?.problem) {
+      setActiveDragItem(active.data.current.problem);
+    }
+  };
+
   // Handle Drag & Drop
   const handleDragEnd = async (event) => {
+    setActiveDragItem(null);
     const { active, over } = event;
     if (!over || !active) return;
     if (active.id === over.id) return; // Same target
 
     const problemId = active.id;
     const newDateStr = over.id; // Cell IDs are 'yyyy-MM-dd'
-    const problem = active.data.current;
+    const problem = active.data.current?.problem;
+    if (!problem) return;
 
     // Check if dragging to the exact same day
     const oldDateStr = problem.next_review_date || (problem.review_schedule ? problem.review_schedule[problem.current_interval_index] : null);
@@ -402,8 +417,16 @@ export const CalendarView = () => {
   const doneProblemsList = selectedProblems.filter(p => p.isCompleted);
   const visibleProblems = activeTab === 'pending' ? pendingProblems : doneProblemsList;
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require dragging by 8px before picking up the card, prevents accidental lockups
+      },
+    })
+  );
+
   return (
-    <DndContext onDragEnd={handleDragEnd} collisionDetection={rectIntersection}>
+    <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={closestCenter} sensors={sensors}>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Calendar Overview</h1>
@@ -529,6 +552,28 @@ export const CalendarView = () => {
           </div>
         </div>
       </div>
+
+      {/* Drag Overlay - renders the floating card outside DOM hierarchy so it won't be clipped */}
+      <DragOverlay dropAnimation={null}>
+        {activeDragItem ? (
+          <div className="p-3 border border-blue-400 rounded-xl bg-white shadow-2xl flex items-start gap-3 w-80 opacity-90">
+            <div className="mt-1 -ml-1 text-blue-400">
+              <GripVertical size={16} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm text-blue-700 truncate">{activeDragItem.title}</p>
+              <div className="flex items-center space-x-2 mt-1">
+                <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                  {activeDragItem.difficulty}
+                </span>
+                <span className="text-[10px] uppercase font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                  Dragging...
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 };

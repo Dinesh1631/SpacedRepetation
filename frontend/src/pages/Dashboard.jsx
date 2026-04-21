@@ -182,7 +182,7 @@ export const Dashboard = () => {
               <TrendingUp size={20} />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900">{problems.length} Due</p>
+              <p className="text-sm font-semibold text-slate-900">{dueList.length} Due</p>
               <p className="text-xs text-slate-500">Pending Reviews</p>
             </div>
           </div>
