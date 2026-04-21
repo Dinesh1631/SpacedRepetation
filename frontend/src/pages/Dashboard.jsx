@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, TrendingUp, Calendar, AlertCircle, ExternalLink, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { format, parseISO, isBefore, isEqual, startOfDay } from 'date-fns';
+import { format, parseISO, isBefore, isEqual, startOfDay, addDays } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { LeetCodeSync } from '../components/LeetCodeSync';
@@ -36,9 +36,10 @@ export const Dashboard = () => {
         // Did we complete it TODAY? Keep it on the dashboard so we can undo it
         if (problem.last_reviewed_date === todayStr) return true;
 
-        if (problem.current_interval_index >= problem.review_schedule.length) return false;
+        const dateStr = problem.next_review_date || (problem.review_schedule && problem.current_interval_index < problem.review_schedule.length ? problem.review_schedule[problem.current_interval_index] : null);
+        if (!dateStr) return false;
         
-        const nextReviewDate = startOfDay(parseISO(problem.review_schedule[problem.current_interval_index]));
+        const nextReviewDate = startOfDay(parseISO(dateStr));
         return isBefore(nextReviewDate, today) || isEqual(nextReviewDate, today);
       });
 
@@ -61,11 +62,23 @@ export const Dashboard = () => {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       const newIndex = problem.current_interval_index + 1;
       
+      // Spaced Repetition Advancement sync
+      let currentInterval = problem.interval || 1;
+      let currentEase = problem.ease_factor || 2.5;
+      const newInterval = Math.round(currentInterval * currentEase) || currentInterval + 1;
+      // You must import addDays into this file if not already imported (wait, I should check that)
+      // I will do that in the next step.
+      
+      const newNextReviewDate = format(addDays(new Date(), newInterval), 'yyyy-MM-dd');
+
       const { error } = await supabase
         .from('problems')
         .update({
           current_interval_index: newIndex,
-          last_reviewed_date: todayStr
+          last_reviewed_date: todayStr,
+          next_review_date: newNextReviewDate,
+          interval: newInterval,
+          ease_factor: currentEase
         })
         .eq('id', problem.id);
 
@@ -78,9 +91,18 @@ export const Dashboard = () => {
         date_string: todayStr
       }]);
 
-      toast.success(`Marked "${problem.title}" as reviewed!`);
+      toast.success(`Marked "${problem.title}"! Next review in ${newInterval} days.`);
       // Update locally to keep it in the "Completed" section instead of vanishing
-      setProblems(prev => prev.map(p => p.id === problem.id ? { ...p, current_interval_index: newIndex, last_reviewed_date: todayStr } : p));
+      setProblems(prev => prev.map(p => 
+        p.id === problem.id ? { 
+          ...p, 
+          current_interval_index: newIndex, 
+          last_reviewed_date: todayStr,
+          next_review_date: newNextReviewDate,
+          interval: newInterval,
+          ease_factor: currentEase
+        } : p
+      ));
     } catch (err) {
       toast.error(err.message);
     } finally {
