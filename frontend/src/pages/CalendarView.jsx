@@ -12,7 +12,9 @@ import {
   isSameDay,
   isToday,
   parseISO,
-  addDays
+  addDays,
+  isBefore,
+  startOfDay
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, BookOpen, ExternalLink, CheckCircle2, Loader2, GripVertical } from 'lucide-react';
 import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core';
@@ -269,6 +271,9 @@ export const CalendarView = () => {
   const scheduleMap = useMemo(() => {
     const map = new Map(); // 'yyyy-MM-dd' -> Problem[]
 
+    const todayObj = startOfDay(new Date());
+    const todayStrFmt = format(todayObj, 'yyyy-MM-dd');
+
     problems.forEach(problem => {
       // Determine what to render based on the new next_review_date
       let targetDateStr = problem.next_review_date;
@@ -279,6 +284,12 @@ export const CalendarView = () => {
       }
 
       if (!targetDateStr) return;
+
+      // Sync Calendar with Dashboard: Roll forward uncompleted past-due items organically to "Today"
+      const targetObj = startOfDay(parseISO(targetDateStr));
+      if (isBefore(targetObj, todayObj) && problem.last_reviewed_date !== todayStrFmt) {
+        targetDateStr = todayStrFmt;
+      }
 
       // They haven't completed this task yet; it's scheduled for targetDateStr
       if (!map.has(targetDateStr)) {
@@ -295,7 +306,7 @@ export const CalendarView = () => {
         if (!map.has(problem.last_reviewed_date)) {
           map.set(problem.last_reviewed_date, []);
         }
-        // Only push it as completed if it doesn't conflict with its next review date
+        // Only push it as completed if it doesn't conflict with its next review date (which would be strange, but possible)
         if (problem.last_reviewed_date !== targetDateStr) {
             map.get(problem.last_reviewed_date).push({
               ...problem,
