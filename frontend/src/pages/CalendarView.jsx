@@ -11,7 +11,8 @@ import {
   isSameMonth,
   isSameDay,
   isToday,
-  parseISO
+  parseISO,
+  addDays
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, BookOpen, ExternalLink, CheckCircle2, Loader2, GripVertical } from 'lucide-react';
 import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core';
@@ -156,16 +157,28 @@ export const CalendarView = () => {
   const handleMarkReviewed = async (problem) => {
     setReviewingId(problem.id);
     try {
-      // Log it using the selected calendar date to back/forward fill their heatmap accuracy
+      // logStr is the date they selected on the calendar where the problem lives
       const logStr = format(selectedDate, 'yyyy-MM-dd');
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
       const newIndex = problem.current_interval_index + 1;
+
+      // Spaced Repetition Advancement
+      let currentInterval = problem.interval || 1;
+      let currentEase = problem.ease_factor || 2.5;
+      
+      // Calculate next interval based on SM2
+      const newInterval = Math.round(currentInterval * currentEase) || currentInterval + 1;
+      // You can add bonus logic here based on difficulty, for now just standard growth
+      
+      const newNextReviewDate = format(addDays(new Date(), newInterval), 'yyyy-MM-dd');
 
       const { error } = await supabase
         .from('problems')
         .update({
           current_interval_index: newIndex,
-          last_reviewed_date: todayStr // the logic technically happened 'today'
+          last_reviewed_date: logStr, // Tie it to the day it was assigned as "completed" there
+          next_review_date: newNextReviewDate,
+          interval: newInterval,
+          ease_factor: currentEase // stays same on normal pass
         })
         .eq('id', problem.id);
 
@@ -174,7 +187,7 @@ export const CalendarView = () => {
       const { error: logError } = await supabase.from('review_logs').insert([{
         user_id: user.id,
         problem_id: problem.id,
-        date_string: logStr // log the heatmap square to the selected calendar day!
+        date_string: logStr // log the heatmap square to the selected calendar day
       }]);
 
       if (logError) {
@@ -182,9 +195,19 @@ export const CalendarView = () => {
         throw new Error(`Heatmap Log Error: ${logError.message}`);
       }
 
-      toast.success(`Completed "${problem.title}"!`);
+      toast.success(`Completed "${problem.title}"! Next review in ${newInterval} days.`);
+      
       // Update local array dynamically to keep calendar synced
-      setProblems(prev => prev.map(p => p.id === problem.id ? { ...p, current_interval_index: newIndex } : p));
+      setProblems(prev => prev.map(p => 
+        p.id === problem.id ? { 
+          ...p, 
+          current_interval_index: newIndex,
+          last_reviewed_date: logStr,
+          next_review_date: newNextReviewDate,
+          interval: newInterval,
+          ease_factor: currentEase
+        } : p
+      ));
     } catch (err) {
       toast.error(err.message);
     } finally {
