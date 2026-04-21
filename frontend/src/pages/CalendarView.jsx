@@ -85,8 +85,9 @@ const DroppableDayCell = ({ day, dayStr, isSelected, isCurrentMonth, isTodayDate
 
 const DraggableProblemCard = ({ problem, reviewingId, handleMarkReviewed, handleUndoReview }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: String(problem.id),
-    data: { problem }
+    id: problem.isProjection ? `proj-${problem.id}-${problem.projectedInterval}` : String(problem.id),
+    data: { problem },
+    disabled: problem.isProjection
   });
 
   const style = {
@@ -97,12 +98,18 @@ const DraggableProblemCard = ({ problem, reviewingId, handleMarkReviewed, handle
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={`p-3 border rounded-xl transition-colors group flex items-start gap-3 ${isDragging ? 'shadow-lg border-blue-400 bg-blue-50' : 'border-slate-100 hover:bg-slate-50'}`}>
+    <div ref={setNodeRef} style={style} className={`p-3 border rounded-xl transition-colors group flex items-start gap-3 ${
+      isDragging ? 'shadow-lg border-blue-400 bg-blue-50' : 
+      problem.isProjection ? 'border-dashed border-slate-200 bg-slate-50/50 opacity-70' : 
+      'border-slate-100 hover:bg-slate-50'
+    }`}>
       
-      {/* Drag Handle - the entire grip area triggers drag */}
-      <div {...listeners} {...attributes} className="mt-1 -ml-1 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing" style={{ touchAction: 'none' }}>
-        <GripVertical size={16} />
-      </div>
+      {/* Drag Handle - hide for projections */}
+      {!problem.isProjection && (
+        <div {...listeners} {...attributes} className="mt-1 -ml-1 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing" style={{ touchAction: 'none' }}>
+          <GripVertical size={16} />
+        </div>
+      )}
 
       {/* Interactive Checkbox */}
       <button
@@ -145,6 +152,10 @@ const DraggableProblemCard = ({ problem, reviewingId, handleMarkReviewed, handle
           ) : problem.isNextReview ? (
             <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded">
               Next Up
+            </span>
+          ) : problem.isProjection ? (
+            <span className="text-[10px] uppercase font-bold text-purple-600 bg-purple-100 px-2 py-0.5 rounded">
+              + {problem.projectedInterval} Days
             </span>
           ) : (
             <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
@@ -305,6 +316,33 @@ export const CalendarView = () => {
         isCompleted: false,
         isNextReview: true
       });
+
+      // --- NEW: Dynamic Future Projections ---
+      // Instead of plotting the static legacy review_schedule array, we calculate 
+      // where this problem will go natively based on current interval & ease_factor!
+      let currentProjInterval = problem.interval || 1;
+      let currentProjEase = problem.ease_factor || 2.5;
+      let projectedDateObj = new Date(targetDateStr);
+
+      // Project up to 4 intervals into the future
+      for (let i = 0; i < 4; i++) {
+        currentProjInterval = Math.round(currentProjInterval * currentProjEase) || currentProjInterval + 1;
+        projectedDateObj = addDays(projectedDateObj, currentProjInterval);
+        
+        const projDateStr = format(projectedDateObj, 'yyyy-MM-dd');
+        if (!map.has(projDateStr)) {
+          map.set(projDateStr, []);
+        }
+        
+        map.get(projDateStr).push({
+          ...problem,
+          isCompleted: false,
+          isNextReview: false,
+          isProjection: true, // FLAG
+          projectedInterval: currentProjInterval
+        });
+      }
+      // ---------------------------------------
 
       // We can also historically map completed tasks if they have a last_reviewed_date
       if (problem.last_reviewed_date) {
